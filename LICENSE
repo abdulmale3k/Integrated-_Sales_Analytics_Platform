@@ -1,0 +1,10 @@
+
+---
+
+## **Verify Your Structure**
+
+Run this command to see your tree:
+
+**Windows:**
+```powershell
+tree /F
