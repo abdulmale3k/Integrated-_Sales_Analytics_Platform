@@ -453,14 +453,6 @@ if __name__ == "__main__":
         print(f"   Total rows: {len(df):,}")
         print(f"   Sample CSV: {sample_path}")
         
-        print("\n📌 NEXT STEPS:")
-        print("   1. ✅ Data loader is working correctly")
-        print("   2. ➡️  Build schema_mapper.py next")
-        print("   3. ➡️  Then build data_cleaner.py")
-        print("   4. ➡️  Finally build the Streamlit dashboard")
-        
-        print("\n" + "=" * 70)
-        
     except Exception as e:
         # ====================================================================
         # TEST FAILED
