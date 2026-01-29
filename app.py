@@ -10,7 +10,7 @@ from reportlab.pdfgen import canvas
 # --- CONFIGURATION ---
 st.set_page_config(page_title="SME Analytics Platform", page_icon="📈", layout="wide")
 
-# --- 1. THE BRAIN: Known Column Aliases ---
+# --- 1.Known Column Aliases ---
 # The system looks for these names to auto-map columns
 COLUMN_ALIASES = {
     "order_date": ["InvoiceDate", "date", "Order Date", "time", "Date"],
