@@ -12,8 +12,8 @@ An integrated web-based analytics platform for small-to-medium e-commerce enterp
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/sales-analytics-platform.git
-cd sales-analytics-platform
+git clone https://github.com/abdulmale3k/Integrated-_Sales_Analytics_Platform.git
+cd Integrated-_Sales_Analytics_Platform
 
 # Create virtual environment
 python -m venv venv
