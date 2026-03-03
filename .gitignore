@@ -35,3 +35,12 @@ Thumbs.db
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Environment Variables
+.env
+
+# Jupyter Notebooks (If you use them for testing data before Streamlit)
+.ipynb_checkpoints/
+
+# Logs
+*.log
