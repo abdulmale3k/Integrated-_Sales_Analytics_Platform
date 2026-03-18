@@ -1,11 +1,12 @@
 """
-Reports Page - PDF Generation
+Reports Page
 """
 
 import streamlit as st
 import pandas as pd
 import io
 from datetime import datetime
+from sidebar import create_sidebar
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -16,310 +17,219 @@ from reportlab.lib.enums import TA_CENTER
 
 st.set_page_config(page_title="Reports", page_icon="📄", layout="wide")
 
-# --- RESPONSIVE CSS ---
+# --- CSS ---
 st.markdown("""
 <style>
-    .block-container {
-        padding-top: 1rem;
-        padding-bottom: 1rem;
-        max-width: 100%;
-    }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     
-    /* Updated for Dark Mode visibility */
-    [data-testid="stMetric"] {
-        background-color: #262730; /* Darker background */
-        border-radius: 10px;
-        padding: 10px 15px;
-    }
+    .stApp { background: linear-gradient(180deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%); }
+    #MainMenu, footer, header, [data-testid="stToolbar"], [data-testid="stSidebarNav"] { display: none !important; }
+    .block-container { padding: 2rem 3rem !important; }
     
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
+    h1, h2, h3 { color: #ffffff !important; }
+    h1 { background: linear-gradient(135deg, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    p, span, label { color: #a0a0a0 !important; }
+    
+    [data-testid="stMetric"] { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 1rem; }
+    .stButton > button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; border-radius: 8px !important; }
+    hr { border-color: rgba(255,255,255,0.1) !important; }
+    .streamlit-expanderHeader { background: rgba(255,255,255,0.05) !important; border-radius: 8px !important; }
 </style>
 """, unsafe_allow_html=True)
 
 
 def main():
-    st.title("📄 Report Generation")
+    create_sidebar()
+
+    st.markdown("<h1>📄 Report Generator</h1>", unsafe_allow_html=True)
+    st.caption("Create professional PDF reports (Models will auto-run if not trained yet)")
     
     if st.session_state.get('data') is None:
-        st.warning("⚠️ No data loaded. Please upload data from the Home page.")
+        st.warning("⚠️ No data loaded.")
         st.stop()
     
     df = st.session_state['data']
     
     st.markdown("---")
     
-    # === REPORT OPTIONS ===
-    st.markdown("### ⚙️ Report Options")
-    
     col1, col2 = st.columns(2)
     
     with col1:
-        include_products = st.checkbox("📦 Include Top Products", value=True)
-        n_products = st.slider("Number of products", 5, 20, 10, disabled=not include_products)
+        st.markdown("### ⚙️ Options")
+        include_products = st.checkbox("📦 Top Products", True)
+        n_products = st.slider("Products count", 5, 20, 10) if include_products else 10
     
     with col2:
-        has_basket = st.session_state.get('basket_rules') is not None
-        has_forecast = st.session_state.get('model_results') is not None
-        
-        include_basket = st.checkbox(
-            "🛒 Include Basket Analysis",
-            value=has_basket,
-            disabled=not has_basket,
-            help="Run basket analysis first to include"
-        )
-        
-        include_forecast = st.checkbox(
-            "🤖 Include AI Forecast",
-            value=has_forecast,
-            disabled=not has_forecast,
-            help="Run model training first to include"
-        )
+        st.markdown("### 📊 Include")
+        include_basket = st.checkbox("🛒 Basket Analysis", value=True)
+        include_forecast = st.checkbox("🤖 AI Forecast", value=True)
     
     st.markdown("---")
     
-    # === GENERATE BUTTON ===
     col1, col2, col3 = st.columns([1, 2, 1])
-    
     with col2:
-        if st.button("📝 Generate PDF Report", type="primary", use_container_width=True):
-            with st.spinner("Creating report..."):
-                pdf = generate_pdf(
-                    df,
-                    include_products=include_products,
-                    include_basket=include_basket,
-                    include_forecast=include_forecast,
-                    n_products=n_products
-                )
+        if st.button("📝 Generate Report", type="primary", use_container_width=True):
+            with st.spinner("Compiling data... (This may take a few seconds if AI models are training)"):
+                
+                # --- AUTO-RUN BASKET ANALYSIS ---
+                if include_basket and st.session_state.get('basket_rules') is None:
+                    try:
+                        from pages.Basket_Analysis import run_analysis
+                        # Run with standard default parameters
+                        rules = run_analysis(df, min_support=0.02, min_lift=1.2)
+                        st.session_state['basket_rules'] = rules
+                    except Exception as e:
+                        st.error(f"Basket Analysis Auto-Run Error: {e}")
+                        include_basket = False
+
+                # --- AUTO-RUN AI FORECAST ---
+                if include_forecast and st.session_state.get('model_results') is None:
+                    try:
+                        from pages.AI_forecasting import train_models
+                        # Prep the daily data just like the AI page does
+                        daily = df.groupby('order_date')['total_value'].sum().reset_index()
+                        daily = daily.set_index('order_date').resample('D').sum().reset_index().sort_values('order_date')
+                        
+                        if len(daily) >= 14:
+                            results = train_models(daily)
+                            st.session_state['model_results'] = results
+                        else:
+                            st.warning("Not enough data (need 14 days) for AI forecasting. Skipping section.")
+                            include_forecast = False
+                    except Exception as e:
+                        st.error(f"AI Forecast Auto-Run Error: {e}")
+                        include_forecast = False
+
+                # Generate the actual PDF
+                pdf = generate_pdf(df, include_products, include_basket, include_forecast, n_products)
                 st.session_state['pdf_buffer'] = pdf
-            st.success("✅ Report generated successfully!")
+                
+            st.success("✅ Report Ready!")
     
-    # Download button
     if st.session_state.get('pdf_buffer'):
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             st.download_button(
-                "⬇️ Download PDF Report",
-                st.session_state['pdf_buffer'],
-                f"Sales_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                "application/pdf",
+                "⬇️ Download PDF", 
+                st.session_state['pdf_buffer'], 
+                f"SME_Sales_Report_{datetime.now().strftime('%Y%m%d')}.pdf", 
+                "application/pdf", 
                 use_container_width=True
             )
-    
+            
     st.markdown("---")
     
-    # === PREVIEW ===
-    st.markdown("### 👀 Report Preview")
-    
-    with st.expander("📊 Executive Summary", expanded=True):
-        total_rev = df['total_value'].sum()
-        total_orders = len(df)
-        unique_products = df['product_name'].nunique()
-        
+    with st.expander("👀 Preview", expanded=True):
         col1, col2, col3 = st.columns(3)
-        col1.metric("💰 Total Revenue", f"£{total_rev:,.2f}")
-        col2.metric("🧾 Total Orders", f"{total_orders:,}")
-        col3.metric("📦 Unique Products", f"{unique_products:,}")
-        
-        st.caption(f"Period: {df['order_date'].min().strftime('%Y-%m-%d')} to {df['order_date'].max().strftime('%Y-%m-%d')}")
-    
-    if include_products:
-        with st.expander("📦 Top Products Preview"):
-            top = df.groupby('product_name')['total_value'].sum().sort_values(ascending=False).head(n_products)
-            st.dataframe(top.reset_index(), use_container_width=True, hide_index=True)
-    
-    if include_basket and has_basket:
-        with st.expander("🛒 Basket Analysis Preview"):
-            rules = st.session_state['basket_rules']
-            st.caption(f"{len(rules)} association rules found")
-            st.dataframe(rules.head(5)[['antecedents', 'consequents', 'lift']], use_container_width=True)
-    
-    if include_forecast and has_forecast:
-        with st.expander("🤖 AI Forecast Preview"):
-            results = st.session_state['model_results']
-            st.caption(f"Champion model: {results['champion_name']}")
+        col1.metric("💰 Revenue", f"£{df['total_value'].sum():,.0f}")
+        col2.metric("🧾 Orders", f"{len(df):,}")
+        col3.metric("📦 Products", f"{df['product_name'].nunique():,}")
 
 
 def generate_pdf(df, include_products, include_basket, include_forecast, n_products):
-    """Generate comprehensive PDF report."""
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        topMargin=0.5*inch,
-        bottomMargin=0.5*inch,
-        leftMargin=0.5*inch,
-        rightMargin=0.5*inch
-    )
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.5*inch, bottomMargin=0.5*inch)
     
     story = []
     styles = getSampleStyleSheet()
     
-    # Custom styles
-    title_style = ParagraphStyle(
-        'Title',
-        parent=styles['Heading1'],
-        fontSize=24,
-        alignment=TA_CENTER,
-        textColor=colors.HexColor('#1a5276'),
-        spaceAfter=20
-    )
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=24, alignment=TA_CENTER, textColor=colors.HexColor('#6366f1'))
+    heading_style = ParagraphStyle('Heading', parent=styles['Heading2'], fontSize=14, textColor=colors.HexColor('#1a1a2e'), spaceBefore=20, spaceAfter=10)
     
-    heading_style = ParagraphStyle(
-        'Heading',
-        parent=styles['Heading2'],
-        fontSize=14,
-        textColor=colors.HexColor('#2c3e50'),
-        spaceBefore=20,
-        spaceAfter=10
-    )
-    
-    # === TITLE ===
-    story.append(Paragraph("📈 Sales Analytics Report", title_style))
-    story.append(Paragraph(
-        f"Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')}",
-        styles['Normal']
-    ))
-    story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#1a5276')))
+    # Header
+    story.append(Paragraph("SME Analytics - Comprehensive Report", title_style))
+    story.append(Paragraph(f"Generated: {datetime.now().strftime('%B %d, %Y')}", ParagraphStyle('Date', alignment=TA_CENTER, textColor=colors.grey)))
+    story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#6366f1')))
     story.append(Spacer(1, 0.3*inch))
     
-    # === EXECUTIVE SUMMARY ===
+    # 1. Executive Summary
     story.append(Paragraph("Executive Summary", heading_style))
-    
-    total_rev = df['total_value'].sum()
-    total_orders = len(df)
-    unique_products = df['product_name'].nunique()
-    avg_order = total_rev / total_orders if total_orders > 0 else 0
-    
-    summary_data = [
-        ['Metric', 'Value'],
-        ['Total Revenue', f"£{total_rev:,.2f}"],
-        ['Total Orders', f"{total_orders:,}"],
-        ['Average Order Value', f"£{avg_order:.2f}"],
-        ['Unique Products', f"{unique_products:,}"],
-        ['Period', f"{df['order_date'].min().strftime('%Y-%m-%d')} to {df['order_date'].max().strftime('%Y-%m-%d')}"]
+    data = [
+        ['Metric', 'Value'], 
+        ['Total Revenue', f"£{df['total_value'].sum():,.2f}"], 
+        ['Total Orders', f"{len(df):,}"], 
+        ['Average Order Value', f"£{df['total_value'].mean():.2f}"], 
+        ['Unique Products Sold', f"{df['product_name'].nunique():,}"]
     ]
-    
-    summary_table = Table(summary_data, colWidths=[2.5*inch, 2.5*inch])
-    summary_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a5276')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    t = Table(data, colWidths=[2.5*inch, 2.5*inch])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#6366f1')), 
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white), 
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), 
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey)
     ]))
-    story.append(summary_table)
-    story.append(Spacer(1, 0.3*inch))
+    story.append(t)
     
-    # === TOP PRODUCTS ===
+    # 2. Top Products
     if include_products:
-        story.append(Paragraph("Top Products", heading_style))
-        
+        story.append(Spacer(1, 0.3*inch))
+        story.append(Paragraph("Top Performing Products", heading_style))
         top = df.groupby('product_name')['total_value'].sum().sort_values(ascending=False).head(n_products)
-        
-        prod_data = [['Rank', 'Product', 'Revenue']]
-        for idx, (name, rev) in enumerate(top.items(), 1):
-            prod_name = str(name)[:40] + ('...' if len(str(name)) > 40 else '')
-            prod_data.append([str(idx), prod_name, f"£{rev:,.2f}"])
-        
-        prod_table = Table(prod_data, colWidths=[0.5*inch, 3.5*inch, 1.5*inch])
-        prod_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#27ae60')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
-            ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        pdata = [['Rank', 'Product Name', 'Revenue generated']]
+        for i, (n, v) in enumerate(top.items(), 1):
+            pdata.append([str(i), str(n)[:40] + ('...' if len(str(n))>40 else ''), f"£{v:,.2f}"])
+            
+        pt = Table(pdata, colWidths=[0.5*inch, 4.0*inch, 1.5*inch])
+        pt.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#10b981')), 
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white), 
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey)
         ]))
-        story.append(prod_table)
+        story.append(pt)
+
+    # 3. Basket Analysis
+    if include_basket and st.session_state.get('basket_rules') is not None and len(st.session_state['basket_rules']) > 0:
         story.append(Spacer(1, 0.3*inch))
-    
-    # === BASKET ANALYSIS ===
-    if include_basket and st.session_state.get('basket_rules') is not None:
-        rules = st.session_state['basket_rules']
+        story.append(Paragraph("Market Basket Associations (Bundling Opportunities)", heading_style))
+        rules = st.session_state['basket_rules'].head(10)
         
-        story.append(Paragraph("Market Basket Insights", heading_style))
-        
-        basket_data = [['If Buys...', 'Also Buys...', 'Lift']]
-        for _, row in rules.head(8).iterrows():
-            ant = ', '.join([str(x)[:20] for x in list(row['antecedents'])])
-            cons = ', '.join([str(x)[:20] for x in list(row['consequents'])])
-            basket_data.append([ant[:30], cons[:30], f"{row['lift']:.1f}x"])
-        
-        basket_table = Table(basket_data, colWidths=[2*inch, 2*inch, 1*inch])
-        basket_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e74c3c')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('TOPPADDING', (0, 0), (-1, -1), 5),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        bdata = [['When a customer buys...', 'They also buy...', 'Lift (Likelihood)']]
+        for _, row in rules.iterrows():
+            ant = ', '.join(list(row['antecedents']))[:30]
+            cons = ', '.join(list(row['consequents']))[:30]
+            bdata.append([ant, cons, f"{row['lift']:.1f}x"])
+            
+        bt = Table(bdata, colWidths=[2.5*inch, 2.5*inch, 1.0*inch])
+        bt.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f59e0b')), 
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white), 
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey)
         ]))
-        story.append(basket_table)
-        story.append(Spacer(1, 0.3*inch))
-    
-    # === AI FORECAST ===
+        story.append(bt)
+
+    # 4. AI Forecast
     if include_forecast and st.session_state.get('model_results') is not None:
+        story.append(Spacer(1, 0.3*inch))
+        story.append(Paragraph("AI Forecasting Model Performance", heading_style))
+        
         results = st.session_state['model_results']
+        story.append(Paragraph(f"<b>Champion Model Selected:</b> {results['champion_name']}", styles['Normal']))
+        story.append(Spacer(1, 0.1*inch))
         
-        story.append(Paragraph("AI Forecasting Summary", heading_style))
-        story.append(Paragraph(
-            f"Champion Model: {results['champion_name']}",
-            styles['Normal']
-        ))
-        
-        model_data = [['Model', 'R² Score', 'MAE']]
+        fdata = [['Model Name', 'R² Score (Accuracy)', 'Mean Absolute Error']]
         for _, row in results['results_df'].iterrows():
-            model_data.append([
-                row['Model'],
-                f"{row['R² Score']:.4f}",
-                f"£{row['MAE']:,.0f}"
-            ])
-        
-        model_table = Table(model_data, colWidths=[2*inch, 1.5*inch, 1.5*inch])
-        model_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#9b59b6')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            fdata.append([row['Model'], f"{row['R² Score']:.4f}", f"£{row['MAE']:,.2f}"])
+            
+        ft = Table(fdata, colWidths=[2.0*inch, 2.0*inch, 2.0*inch])
+        ft.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#ec4899')), 
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white), 
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey)
         ]))
-        story.append(model_table)
+        story.append(ft)
     
-    # === FOOTER ===
+    # Footer
     story.append(Spacer(1, 0.5*inch))
     story.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
-    story.append(Spacer(1, 0.1*inch))
+    story.append(Paragraph("Confidential - Generated by SME Analytics Platform", ParagraphStyle('Footer', fontSize=8, textColor=colors.grey, alignment=TA_CENTER)))
     
-    footer_style = ParagraphStyle(
-        'Footer',
-        parent=styles['Normal'],
-        fontSize=8,
-        textColor=colors.grey,
-        alignment=TA_CENTER
-    )
-    story.append(Paragraph(
-        "Generated by SME Analytics Platform | Confidential",
-        footer_style
-    ))
-    
-    # Build PDF
     doc.build(story)
     buffer.seek(0)
     return buffer
 
 
 if __name__ == "__main__":
-    main()
-else:
     main()

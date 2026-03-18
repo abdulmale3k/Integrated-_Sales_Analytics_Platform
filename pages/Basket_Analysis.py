@@ -5,39 +5,41 @@ Market Basket Analysis Page
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+from sidebar import create_sidebar  # <--- Importing your custom sidebar
 
 st.set_page_config(page_title="Basket Analysis", page_icon="🛒", layout="wide")
 
-# --- RESPONSIVE CSS ---
+# --- CSS ---
 st.markdown("""
 <style>
-    .block-container {
-        padding-top: 1rem;
-        padding-bottom: 1rem;
-        max-width: 100%;
-    }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     
-    [data-testid="stMetric"] {
-        background-color: #f0f2f6;
-        border-radius: 10px;
-        padding: 10px 15px;
-        overflow: hidden;
-    }
+    .stApp { background: linear-gradient(180deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%); }
     
-    [data-testid="stMetricLabel"] {
-        font-size: 0.85rem !important;
-    }
+    /* Hide Streamlit default menus */
+    #MainMenu, footer, header, [data-testid="stToolbar"], [data-testid="stSidebarNav"] { display: none !important; }
     
-    [data-testid="stMetricValue"] {
-        font-size: 1.1rem !important;
-    }
+    .block-container { padding: 2rem 3rem !important; }
     
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
+    h1, h2, h3 { color: #ffffff !important; }
+    h1 { background: linear-gradient(135deg, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    p, span, label { color: #a0a0a0 !important; }
+    
+    [data-testid="stMetric"] { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 1rem; }
+    [data-testid="stMetricLabel"] { color: #a0a0a0 !important; }
+    [data-testid="stMetricValue"] { color: #ffffff !important; }
+    
+    .stTabs [data-baseweb="tab-list"] { background: rgba(255,255,255,0.05); border-radius: 16px; padding: 0.5rem; }
+    .stTabs [data-baseweb="tab"] { color: #a0a0a0; border-radius: 8px; }
+    .stTabs [aria-selected="true"] { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; }
+    
+    .stButton > button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; border-radius: 8px !important; }
+    
+    hr { border-color: rgba(255,255,255,0.1) !important; }
+    .stAlert { background: rgba(255,255,255,0.05) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 8px !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# Check for mlxtend
 try:
     from mlxtend.frequent_patterns import apriori, association_rules
     MLXTEND_AVAILABLE = True
@@ -52,298 +54,139 @@ except ImportError:
 
 
 def main():
-    st.title("🛒 Market Basket Analysis")
-    st.caption("Discover which products are frequently bought together")
+    # === SIDEBAR ===
+    create_sidebar()  # <--- Injecting the custom sidebar here
     
-    # Check data
+    st.markdown("<h1>🛒 Market Basket Analysis</h1>", unsafe_allow_html=True)
+    st.caption("Discover hidden product associations")
+    
     if st.session_state.get('data') is None:
-        st.warning("⚠️ No data loaded. Please upload data from the Home page.")
+        st.warning("⚠️ No data loaded.")
         st.stop()
     
-    # Check library
     if not MLXTEND_AVAILABLE:
-        st.error("❌ MLxtend library required. Install with: `pip install mlxtend`")
+        st.error("❌ Install mlxtend: `pip install mlxtend`")
         st.stop()
     
     df = st.session_state['data']
     
-    # Check for transaction ID
     if 'transaction_id' not in df.columns:
-        st.warning("⚠️ Transaction ID not found in data.")
-        st.info("""
-        **Market Basket Analysis requires transaction-level data.**
-        
-        To enable this feature:
-        1. Go back to the **Home** page
-        2. Re-upload your data
-        3. Map the **Transaction ID** column (Invoice Number, Order ID, etc.)
-        """)
+        st.warning("⚠️ Transaction ID required for basket analysis.")
+        st.info("Re-upload data and map the Transaction ID column.")
         st.stop()
     
     st.markdown("---")
     
-    # === PARAMETERS ===
-    st.markdown("### ⚙️ Analysis Parameters")
-    
+    # Parameters
     col1, col2, col3 = st.columns(3)
-    
     with col1:
-        min_support = st.slider(
-            "Min Support",
-            min_value=0.005,
-            max_value=0.1,
-            value=0.02,
-            step=0.005,
-            help="Minimum frequency of item combinations (lower = more results)"
-        )
-    
+        min_support = st.slider("Min Support", 0.005, 0.1, 0.02, 0.005)
     with col2:
-        min_lift = st.slider(
-            "Min Lift",
-            min_value=1.0,
-            max_value=5.0,
-            value=1.2,
-            step=0.1,
-            help="Minimum lift value (>1 = positive association)"
-        )
-    
+        min_lift = st.slider("Min Lift", 1.0, 5.0, 1.2, 0.1)
     with col3:
-        max_rules = st.slider(
-            "Max Rules to Show",
-            min_value=10,
-            max_value=100,
-            value=30,
-            step=10
-        )
+        max_rules = st.slider("Max Rules", 10, 100, 30, 10)
     
-    # === RUN ANALYSIS ===
     if st.button("🔍 Run Analysis", type="primary", use_container_width=True):
-        with st.spinner("Mining association patterns... This may take a moment."):
-            rules = run_basket_analysis(df, min_support, min_lift)
+        with st.spinner("Mining patterns..."):
+            rules = run_analysis(df, min_support, min_lift)
         
         if rules is not None and len(rules) > 0:
             st.session_state['basket_rules'] = rules
-            st.success(f"✅ Found {len(rules)} association rules!")
+            st.success(f"✅ Found {len(rules)} rules!")
             st.rerun()
         else:
-            st.warning("No patterns found. Try lowering the Min Support or Min Lift values.")
+            st.warning("No patterns found. Try lower thresholds.")
     
-    # === DISPLAY RESULTS ===
-    if st.session_state.get('basket_rules') is not None and len(st.session_state['basket_rules']) > 0:
+    if st.session_state.get('basket_rules') is not None:
         rules = st.session_state['basket_rules']
         
         st.markdown("---")
         
-        # Metrics
         col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("📊 Rules Found", f"{len(rules):,}")
-        
-        with col2:
-            st.metric("📈 Avg Confidence", f"{rules['confidence'].mean():.0%}")
-        
-        with col3:
-            st.metric("🎯 Avg Lift", f"{rules['lift'].mean():.1f}x")
-        
-        with col4:
-            st.metric("🔝 Max Lift", f"{rules['lift'].max():.1f}x")
+        col1.metric("📊 Rules", len(rules))
+        col2.metric("📈 Avg Confidence", f"{rules['confidence'].mean():.0%}")
+        col3.metric("🎯 Avg Lift", f"{rules['lift'].mean():.1f}x")
+        col4.metric("🔝 Max Lift", f"{rules['lift'].max():.1f}x")
         
         st.markdown("---")
         
-        # Tabs for results
-        tab1, tab2, tab3 = st.tabs(["📋 Rules Table", "🕸️ Network", "💡 Insights"])
+        tab1, tab2, tab3 = st.tabs(["📋 Rules", "🕸️ Network", "💡 Insights"])
         
         with tab1:
-            display_rules_table(rules.head(max_rules))
+            display = rules.head(max_rules).copy()
+            display['antecedents'] = display['antecedents'].apply(lambda x: ', '.join(list(x)[:2]))
+            display['consequents'] = display['consequents'].apply(lambda x: ', '.join(list(x)[:2]))
+            display = display[['antecedents', 'consequents', 'support', 'confidence', 'lift']]
+            display.columns = ['If Buys', 'Also Buys', 'Support', 'Confidence', 'Lift']
+            display['Confidence'] = display['Confidence'].apply(lambda x: f"{x:.0%}")
+            display['Lift'] = display['Lift'].apply(lambda x: f"{x:.2f}x")
+            st.dataframe(display, use_container_width=True, hide_index=True)
         
         with tab2:
             if NETWORKX_AVAILABLE:
-                display_network(rules.head(20))
+                render_network(rules.head(15))
             else:
-                st.info("Install networkx for network visualization: `pip install networkx`")
+                st.info("Install networkx for visualization")
         
         with tab3:
-            display_insights(rules)
+            for i, row in rules.head(3).iterrows():
+                ant = ', '.join(list(row['antecedents']))[:40]
+                cons = ', '.join(list(row['consequents']))[:40]
+                st.info(f"🛒 **{ant}** → **{cons}** (Lift: {row['lift']:.1f}x, Confidence: {row['confidence']:.0%})")
 
 
 @st.cache_data(show_spinner=False)
-def run_basket_analysis(_df, min_support, min_lift):
-    """Run apriori algorithm and generate association rules."""
+def run_analysis(_df, min_support, min_lift):
     try:
         df = _df.copy()
-        
-        # Create basket format
         basket = df.groupby(['transaction_id', 'product_name'])['quantity'].sum().unstack().fillna(0)
-        
-        # Convert to binary (bought or not)
         basket_binary = basket.applymap(lambda x: 1 if x > 0 else 0)
         
-        # Filter rare products (must appear in at least 1% of transactions)
         min_trans = max(1, int(len(basket_binary) * 0.01))
-        product_counts = basket_binary.sum()
-        valid_products = product_counts[product_counts >= min_trans].index
-        basket_binary = basket_binary[valid_products]
+        valid = basket_binary.sum()[basket_binary.sum() >= min_trans].index
+        basket_binary = basket_binary[valid]
         
         if len(basket_binary.columns) < 2:
             return None
         
-        # Generate frequent itemsets
-        frequent = apriori(
-            basket_binary,
-            min_support=min_support,
-            use_colnames=True,
-            max_len=3
-        )
-        
+        frequent = apriori(basket_binary, min_support=min_support, use_colnames=True, max_len=3)
         if len(frequent) == 0:
             return None
         
-        # Generate rules
         rules = association_rules(frequent, metric="lift", min_threshold=min_lift)
-        rules = rules.sort_values('lift', ascending=False)
-        
-        return rules
-    
-    except Exception as e:
-        st.error(f"Analysis error: {str(e)}")
+        return rules.sort_values('lift', ascending=False)
+    except:
         return None
 
 
-def display_rules_table(rules):
-    """Display association rules as a formatted table."""
-    st.markdown("### 📋 Association Rules")
-    
-    display = rules.copy()
-    display['antecedents'] = display['antecedents'].apply(
-        lambda x: ', '.join([str(i)[:30] for i in list(x)])
-    )
-    display['consequents'] = display['consequents'].apply(
-        lambda x: ', '.join([str(i)[:30] for i in list(x)])
-    )
-    
-    display = display[['antecedents', 'consequents', 'support', 'confidence', 'lift']]
-    display.columns = ['If Customer Buys', 'They Also Buy', 'Support', 'Confidence', 'Lift']
-    
-    display['Support'] = display['Support'].apply(lambda x: f"{x:.3f}")
-    display['Confidence'] = display['Confidence'].apply(lambda x: f"{x:.0%}")
-    display['Lift'] = display['Lift'].apply(lambda x: f"{x:.2f}x")
-    
-    st.dataframe(display, use_container_width=True, hide_index=True)
-    
-    # Explanation
-    with st.expander("ℹ️ Understanding the Metrics"):
-        st.markdown("""
-        | Metric | Description |
-        |--------|-------------|
-        | **Support** | How frequently the items appear together (0-1) |
-        | **Confidence** | Probability of buying B given A was bought |
-        | **Lift** | How much more likely B is bought with A vs alone (>1 = positive association) |
-        """)
-
-
-def display_network(rules):
-    """Display product association network."""
-    st.markdown("### 🕸️ Product Relationship Network")
-    
-    if len(rules) < 2:
-        st.info("Not enough rules for network visualization")
-        return
-    
+def render_network(rules):
     G = nx.Graph()
-    
     for _, row in rules.iterrows():
         for ant in row['antecedents']:
             for cons in row['consequents']:
-                G.add_edge(str(ant)[:20], str(cons)[:20], weight=row['lift'])
+                G.add_edge(str(ant)[:15], str(cons)[:15])
     
     if len(G.nodes()) == 0:
-        st.info("No connections to display")
         return
     
-    # Layout
-    pos = nx.spring_layout(G, k=2, iterations=50, seed=42)
+    pos = nx.spring_layout(G, k=2, seed=42)
     
-    # Edges
     edge_x, edge_y = [], []
-    for edge in G.edges():
-        x0, y0 = pos[edge[0]]
-        x1, y1 = pos[edge[1]]
+    for e in G.edges():
+        x0, y0 = pos[e[0]]
+        x1, y1 = pos[e[1]]
         edge_x.extend([x0, x1, None])
         edge_y.extend([y0, y1, None])
     
-    # Nodes
     node_x = [pos[n][0] for n in G.nodes()]
     node_y = [pos[n][1] for n in G.nodes()]
     
-    # Create figure
     fig = go.Figure()
-    
-    fig.add_trace(go.Scatter(
-        x=edge_x, y=edge_y,
-        mode='lines',
-        line=dict(width=1, color='#888'),
-        hoverinfo='none'
-    ))
-    
-    fig.add_trace(go.Scatter(
-        x=node_x, y=node_y,
-        mode='markers+text',
-        text=list(G.nodes()),
-        textposition='top center',
-        textfont=dict(size=9),
-        marker=dict(
-            size=20,
-            color='#1f77b4',
-            line=dict(width=2, color='white')
-        ),
-        hoverinfo='text'
-    ))
-    
-    fig.update_layout(
-        showlegend=False,
-        height=450,
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        margin=dict(l=0, r=0, t=10, b=0)
-    )
-    
+    fig.add_trace(go.Scatter(x=edge_x, y=edge_y, mode='lines', line=dict(width=1, color='#6366f1'), hoverinfo='none'))
+    fig.add_trace(go.Scatter(x=node_x, y=node_y, mode='markers+text', text=list(G.nodes()), textposition='top center', textfont=dict(size=10, color='#a0a0a0'), marker=dict(size=20, color='#8b5cf6', line=dict(width=2, color='white'))))
+    fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', showlegend=False, height=450, xaxis=dict(showgrid=False, zeroline=False, showticklabels=False), yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
     st.plotly_chart(fig, use_container_width=True)
 
 
-def display_insights(rules):
-    """Display actionable insights from association rules."""
-    st.markdown("### 💡 Actionable Recommendations")
-    
-    if len(rules) == 0:
-        st.info("No rules to generate insights from")
-        return
-    
-    for idx, row in rules.head(5).iterrows():
-        ant = ', '.join([str(x)[:35] for x in list(row['antecedents'])])
-        cons = ', '.join([str(x)[:35] for x in list(row['consequents'])])
-        
-        st.info(f"""
-        **Bundle Opportunity #{idx + 1}**
-        
-        🛒 Customers buying **{ant}** are **{row['lift']:.1f}x** more likely to buy **{cons}**
-        
-        📊 Confidence: {row['confidence']:.0%} | Support: {row['support']:.3f}
-        
-        💡 *Consider creating a promotional bundle or cross-sell recommendation*
-        """)
-    
-    st.markdown("---")
-    st.markdown("""
-    **How to use these insights:**
-    - 🏷️ **Bundling:** Create product bundles with high-lift associations
-    - 📧 **Email Marketing:** Recommend consequent products to customers who bought antecedent products
-    - 🏪 **Store Layout:** Place associated products near each other
-    - 💻 **Website:** Show "Frequently bought together" recommendations
-    """)
-
-
 if __name__ == "__main__":
-    main()
-else:
     main()
