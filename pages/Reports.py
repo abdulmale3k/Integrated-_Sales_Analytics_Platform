@@ -1,17 +1,18 @@
 """
-Reports Page
+Reports Page - With Visual Matplotlib Charts
 """
 
 import streamlit as st
 import pandas as pd
 import io
 from datetime import datetime
+import matplotlib.pyplot as plt
 from sidebar import create_sidebar
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable, Image
 from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_CENTER
 
@@ -56,11 +57,12 @@ def main():
     
     with col1:
         st.markdown("### ⚙️ Options")
-        include_products = st.checkbox("📦 Top Products", True)
+        include_products = st.checkbox("📦 Top Products Table", True)
         n_products = st.slider("Products count", 5, 20, 10) if include_products else 10
     
     with col2:
-        st.markdown("### 📊 Include")
+        st.markdown("### 📊 Include Sections")
+        include_charts = st.checkbox("📈 Visual Charts", value=True)
         include_basket = st.checkbox("🛒 Basket Analysis", value=True)
         include_forecast = st.checkbox("🤖 AI Forecast", value=True)
     
@@ -69,13 +71,12 @@ def main():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if st.button("📝 Generate Report", type="primary", use_container_width=True):
-            with st.spinner("Compiling data... (This may take a few seconds if AI models are training)"):
+            with st.spinner("Compiling data and rendering charts..."):
                 
                 # --- AUTO-RUN BASKET ANALYSIS ---
                 if include_basket and st.session_state.get('basket_rules') is None:
                     try:
                         from pages.Basket_Analysis import run_analysis
-                        # Run with standard default parameters
                         rules = run_analysis(df, min_support=0.02, min_lift=1.2)
                         st.session_state['basket_rules'] = rules
                     except Exception as e:
@@ -86,7 +87,6 @@ def main():
                 if include_forecast and st.session_state.get('model_results') is None:
                     try:
                         from pages.AI_forecasting import train_models
-                        # Prep the daily data just like the AI page does
                         daily = df.groupby('order_date')['total_value'].sum().reset_index()
                         daily = daily.set_index('order_date').resample('D').sum().reset_index().sort_values('order_date')
                         
@@ -101,7 +101,7 @@ def main():
                         include_forecast = False
 
                 # Generate the actual PDF
-                pdf = generate_pdf(df, include_products, include_basket, include_forecast, n_products)
+                pdf = generate_pdf(df, include_products, include_basket, include_forecast, n_products, include_charts)
                 st.session_state['pdf_buffer'] = pdf
                 
             st.success("✅ Report Ready!")
@@ -116,17 +116,62 @@ def main():
                 "application/pdf", 
                 use_container_width=True
             )
-            
-    st.markdown("---")
+
+# --- CHART GENERATION ENGINE ---
+def create_trend_chart(df):
+    """Generates a daily revenue line chart and returns it as an Image flowable"""
+    if not pd.api.types.is_datetime64_any_dtype(df['order_date']):
+        df['order_date'] = pd.to_datetime(df['order_date'])
+        
+    daily = df.groupby(df['order_date'].dt.date)['total_value'].sum()
     
-    with st.expander("👀 Preview", expanded=True):
-        col1, col2, col3 = st.columns(3)
-        col1.metric("💰 Revenue", f"£{df['total_value'].sum():,.0f}")
-        col2.metric("🧾 Orders", f"{len(df):,}")
-        col3.metric("📦 Products", f"{df['product_name'].nunique():,}")
+    fig, ax = plt.subplots(figsize=(8, 3.5))
+    ax.plot(daily.index, daily.values, color='#6366f1', linewidth=2, marker='o', markersize=4)
+    ax.set_title('Daily Revenue Trend', fontsize=12, pad=10, color='#333333', fontweight='bold')
+    ax.set_ylabel('Revenue (£)', fontsize=10)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    
+    # Remove top and right borders for a cleaner look
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
+    plt.tight_layout()
+    
+    img_buffer = io.BytesIO()
+    plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    img_buffer.seek(0)
+    
+    return Image(img_buffer, width=6.5*inch, height=2.8*inch)
 
+def create_top_products_chart(df):
+    """Generates a horizontal bar chart of top 5 products"""
+    top5 = df.groupby('product_name')['total_value'].sum().nlargest(5).sort_values(ascending=True)
+    
+    fig, ax = plt.subplots(figsize=(8, 3))
+    bars = ax.barh(top5.index.astype(str).str[:25] + '...', top5.values, color='#10b981')
+    ax.set_title('Top 5 Products by Revenue', fontsize=12, pad=10, color='#333333', fontweight='bold')
+    ax.set_xlabel('Revenue (£)', fontsize=10)
+    
+    # Add value labels to the end of bars
+    for bar in bars:
+        ax.text(bar.get_width(), bar.get_y() + bar.get_height()/2, f' £{bar.get_width():,.0f}', 
+                va='center', ha='left', fontsize=9, color='#333333')
+                
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
+    plt.tight_layout()
+    
+    img_buffer = io.BytesIO()
+    plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    img_buffer.seek(0)
+    
+    return Image(img_buffer, width=6.5*inch, height=2.5*inch)
 
-def generate_pdf(df, include_products, include_basket, include_forecast, n_products):
+# --- PDF GENERATION ENGINE ---
+def generate_pdf(df, include_products, include_basket, include_forecast, n_products, include_charts):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.5*inch, bottomMargin=0.5*inch)
     
@@ -140,7 +185,7 @@ def generate_pdf(df, include_products, include_basket, include_forecast, n_produ
     story.append(Paragraph("SME Analytics - Comprehensive Report", title_style))
     story.append(Paragraph(f"Generated: {datetime.now().strftime('%B %d, %Y')}", ParagraphStyle('Date', alignment=TA_CENTER, textColor=colors.grey)))
     story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#6366f1')))
-    story.append(Spacer(1, 0.3*inch))
+    story.append(Spacer(1, 0.2*inch))
     
     # 1. Executive Summary
     story.append(Paragraph("Executive Summary", heading_style))
@@ -160,10 +205,18 @@ def generate_pdf(df, include_products, include_basket, include_forecast, n_produ
     ]))
     story.append(t)
     
-    # 2. Top Products
+    # 2. Visual Charts (NEW)
+    if include_charts:
+        story.append(Spacer(1, 0.2*inch))
+        story.append(Paragraph("Business Performance Visuals", heading_style))
+        story.append(create_trend_chart(df))
+        story.append(Spacer(1, 0.1*inch))
+        story.append(create_top_products_chart(df))
+    
+    # 3. Top Products Table
     if include_products:
-        story.append(Spacer(1, 0.3*inch))
-        story.append(Paragraph("Top Performing Products", heading_style))
+        story.append(Spacer(1, 0.2*inch))
+        story.append(Paragraph("Top Performing Products (Data Table)", heading_style))
         top = df.groupby('product_name')['total_value'].sum().sort_values(ascending=False).head(n_products)
         pdata = [['Rank', 'Product Name', 'Revenue generated']]
         for i, (n, v) in enumerate(top.items(), 1):
@@ -178,9 +231,9 @@ def generate_pdf(df, include_products, include_basket, include_forecast, n_produ
         ]))
         story.append(pt)
 
-    # 3. Basket Analysis
+    # 4. Basket Analysis
     if include_basket and st.session_state.get('basket_rules') is not None and len(st.session_state['basket_rules']) > 0:
-        story.append(Spacer(1, 0.3*inch))
+        story.append(Spacer(1, 0.2*inch))
         story.append(Paragraph("Market Basket Associations (Bundling Opportunities)", heading_style))
         rules = st.session_state['basket_rules'].head(10)
         
@@ -199,9 +252,9 @@ def generate_pdf(df, include_products, include_basket, include_forecast, n_produ
         ]))
         story.append(bt)
 
-    # 4. AI Forecast
+    # 5. AI Forecast
     if include_forecast and st.session_state.get('model_results') is not None:
-        story.append(Spacer(1, 0.3*inch))
+        story.append(Spacer(1, 0.2*inch))
         story.append(Paragraph("AI Forecasting Model Performance", heading_style))
         
         results = st.session_state['model_results']
