@@ -63,16 +63,11 @@ def main():
         
     df = st.session_state['data']
     
-    # --- API KEY INPUT ---
+# Pull the API key silently from the hidden secrets file
+    api_key = st.secrets["GEMINI_API_KEY"]
     st.markdown("---")
-    api_key = st.text_input("🔑 Enter your Gemini API Key to activate the AI:", type="password", placeholder="AIzaSy...")
+
     
-    if not api_key:
-        st.info("👆 Please paste your API key above to start chatting!")
-        st.stop()
-
-    st.markdown("---")
-
     # --- INITIALIZE CHAT MEMORY ---
     if "messages" not in st.session_state:
         st.session_state.messages = [

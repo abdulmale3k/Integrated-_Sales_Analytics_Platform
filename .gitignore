@@ -44,3 +44,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+#Streamlit api folder
+.streamlit/
