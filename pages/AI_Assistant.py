@@ -37,6 +37,22 @@ st.markdown("""
         border: 1px solid rgba(255,255,255,0.05);
     }
     
+    /* Make chat text bright, crisp, and readable */
+    [data-testid="stChatMessage"] p, 
+    [data-testid="stChatMessage"] li, 
+    [data-testid="stChatMessage"] span {
+        color: #f8fafc !important; 
+        line-height: 1.6 !important;
+        font-size: 1.05rem !important;
+    }
+    
+    /* Make the AI's bold recommendations really pop */
+    [data-testid="stChatMessage"] strong,
+    [data-testid="stChatMessage"] b {
+        color: #ffffff !important;
+        font-weight: 600 !important;
+    }
+    
     [data-testid="stChatInput"] {
         background-color: rgba(255, 255, 255, 0.05) !important;
         border-color: rgba(139, 92, 246, 0.5) !important;
@@ -63,7 +79,7 @@ def main():
         
     df = st.session_state['data']
     
-# Pull the API key silently from the hidden secrets file
+    # Pull the API key silently from the hidden secrets file
     api_key = st.secrets["GEMINI_API_KEY"]
     st.markdown("---")
 
