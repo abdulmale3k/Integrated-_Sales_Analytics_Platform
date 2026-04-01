@@ -2,7 +2,6 @@ import streamlit as st
 
 def create_sidebar():
     # --- UNIFIED GLOBAL CSS ---
-    # Putting this here ensures EVERY page gets the exact same stunning theme automatically!
     st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
@@ -23,17 +22,22 @@ def create_sidebar():
             --border-radius: 16px;
         }
         
-        /* 1. Hide Streamlit default menus */
-        #MainMenu, footer, header, [data-testid="stToolbar"], [data-testid="stSidebarNav"] { display: none !important; }
+        /* 1. Safely hide extra fluff, but LEAVE HEADER ALONE */
+        #MainMenu, footer { display: none !important; }
         
-        /* 2. Fix the Main Background (Targeting Streamlit's new container classes) */
-        [data-testid="stAppViewContainer"], .stApp {
+        /* Make the native header transparent so it blends perfectly */
+        [data-testid="stHeader"] { background-color: transparent !important; }
+        
+        /* Ensure the toggle text/icon stays white */
+        [data-testid="stHeader"] * { color: white !important; }
+
+        /* 2. Fix the Main Background */
+        .stApp, [data-testid="stAppViewContainer"] {
             background-color: var(--bg-primary) !important;
             background-image: var(--gradient-mesh) !important;
             background-attachment: fixed !important;
             font-family: 'Inter', sans-serif !important;
         }
-        [data-testid="stHeader"] { background: transparent !important; }
         
         /* 3. Fix the Sidebar Background */
         [data-testid="stSidebar"] {
@@ -41,7 +45,10 @@ def create_sidebar():
             border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
         }
         
-        /* 4. Fix Buttons */
+        /* 4. Hide Streamlit's default sidebar text links (so we can use our custom buttons) */
+        [data-testid="stSidebarNav"] { display: none !important; }
+
+        /* 5. Fix Custom Buttons */
         div[data-testid="stButton"] button {
             background: var(--gradient-purple) !important;
             color: white !important;
@@ -60,7 +67,8 @@ def create_sidebar():
             font-weight: 600 !important;
         }
         
-        /* 5. Fix Missing H1 Title */
+        /* 6. Fix Typography */
+        h1, h2, h3, h4, p, span { color: var(--text-primary); }
         h1 {
             background: linear-gradient(135deg, #ffffff 0%, #a78bfa 50%, #06b6d4 100%) !important;
             -webkit-background-clip: text !important;
@@ -68,9 +76,7 @@ def create_sidebar():
             background-clip: text !important;
         }
         
-        h2, h3, h4, p, span { color: var(--text-primary); }
-        
-        /* 6. Fix Upload Card Visibility */
+        /* 7. Fix Upload Card Visibility */
         .glass-card {
             background: rgba(255, 255, 255, 0.05) !important;
             backdrop-filter: blur(10px) !important;
@@ -78,40 +84,31 @@ def create_sidebar():
             border-radius: var(--border-radius) !important;
             padding: 1.5rem !important;
         }
-        
         [data-testid="stFileUploader"] {
             background: rgba(0,0,0,0.2) !important;
             border: 2px dashed rgba(139, 92, 246, 0.5) !important;
             border-radius: 12px !important;
         }
-        
-        /* Typography fallbacks */
         .metric-value { font-family: 'JetBrains Mono', monospace !important; color: white !important; }
         .metric-label { color: var(--text-secondary) !important; }
         
-        /* 7. Fix Tabs Visibility */
+        /* 8. Fix Tabs Visibility */
         .stTabs [data-baseweb="tab-list"] {
             background: rgba(255, 255, 255, 0.05) !important;
             border-radius: 12px !important;
             padding: 0.5rem !important;
         }
-        .stTabs [data-baseweb="tab"] {
-            background: transparent !important;
-        }
-        .stTabs [data-baseweb="tab"] p {
-            color: #8b8b9e !important; /* Inactive tab text color */
-        }
+        .stTabs [data-baseweb="tab"] { background: transparent !important; }
+        .stTabs [data-baseweb="tab"] p { color: #8b8b9e !important; }
         .stTabs [aria-selected="true"] {
             background: var(--gradient-purple) !important;
             border-radius: 8px !important;
         }
         .stTabs [aria-selected="true"] p {
-            color: white !important; /* Force ACTIVE tab text to be white */
+            color: white !important;
             font-weight: 600 !important;
         }
-        .stTabs [data-baseweb="tab-highlight"] {
-            display: none !important; /* Hides the default red underline */
-        }
+        .stTabs [data-baseweb="tab-highlight"] { display: none !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -169,11 +166,8 @@ def create_sidebar():
             st.switch_page("pages/Dashboard.py")
         if st.button("📦 Products", use_container_width=True, key="nav_prod"):
             st.switch_page("pages/Products.py")
-            
-        # 👇 NEW BUTTON ADDED HERE 👇
         if st.button("📋 Product Analysis", use_container_width=True, key="nav_abc"):
             st.switch_page("pages/Product_Analysis.py")
-            
         if st.button("🛒 Basket Analysis", use_container_width=True, key="nav_basket"):
             st.switch_page("pages/Basket_Analysis.py")
         if st.button("🤖 AI Forecast", use_container_width=True, key="nav_ai"):

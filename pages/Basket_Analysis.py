@@ -1,11 +1,11 @@
 """
-Market Basket Analysis Page
+Market Basket Analysis Page - FYP Optimized
 """
 
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from sidebar import create_sidebar  # <--- Importing your custom sidebar
+from sidebar import create_sidebar  
 
 st.set_page_config(page_title="Basket Analysis", page_icon="🛒", layout="wide")
 
@@ -15,28 +15,30 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     
     .stApp { background: linear-gradient(180deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%); }
-    
-    /* Hide Streamlit default menus */
     #MainMenu, footer, header, [data-testid="stToolbar"], [data-testid="stSidebarNav"] { display: none !important; }
-    
     .block-container { padding: 2rem 3rem !important; }
     
     h1, h2, h3 { color: #ffffff !important; }
     h1 { background: linear-gradient(135deg, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     p, span, label { color: #a0a0a0 !important; }
     
-    [data-testid="stMetric"] { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 1rem; }
-    [data-testid="stMetricLabel"] { color: #a0a0a0 !important; }
-    [data-testid="stMetricValue"] { color: #ffffff !important; }
+    [data-testid="stMetric"] { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem; }
+    [data-testid="stMetricLabel"] { color: #a0a0a0 !important; font-size: 0.9rem !important; }
+    [data-testid="stMetricValue"] { color: #ffffff !important; font-size: 1.8rem !important;}
     
-    .stTabs [data-baseweb="tab-list"] { background: rgba(255,255,255,0.05); border-radius: 16px; padding: 0.5rem; }
-    .stTabs [data-baseweb="tab"] { color: #a0a0a0; border-radius: 8px; }
+    .stTabs [data-baseweb="tab-list"] { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 0.5rem; gap: 1rem; }
+    .stTabs [data-baseweb="tab"] { color: #a0a0a0; border-radius: 8px; padding: 0.5rem 1rem; }
     .stTabs [aria-selected="true"] { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; }
     
-    .stButton > button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; border-radius: 8px !important; }
+    .stButton > button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; border-radius: 8px !important; transition: 0.3s; }
+    .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4); }
     
     hr { border-color: rgba(255,255,255,0.1) !important; }
-    .stAlert { background: rgba(255,255,255,0.05) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 8px !important; }
+    
+    /* Custom Strategy Cards */
+    .strategy-card { background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; }
+    .strategy-title { color: white; font-weight: 600; font-size: 1.1rem; margin-bottom: 0.5rem; }
+    .strategy-text { color: #d1d5db; font-size: 0.95rem; line-height: 1.5; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -54,122 +56,182 @@ except ImportError:
 
 
 def main():
-    # === SIDEBAR ===
-    create_sidebar()  # <--- Injecting the custom sidebar here
+    create_sidebar()
     
-    st.markdown("<h1>🛒 Market Basket Analysis</h1>", unsafe_allow_html=True)
-    st.caption("Discover hidden product associations")
+    st.markdown("<h1>🛒 Smart Bundling & Upselling</h1>", unsafe_allow_html=True)
+    st.caption("Automatically discover which products your customers frequently buy together to build profitable bundles.")
     
     if st.session_state.get('data') is None:
-        st.warning("⚠️ No data loaded.")
+        st.warning("⚠️ No data loaded. Please upload your dataset on the Home page.")
         st.stop()
     
     if not MLXTEND_AVAILABLE:
-        st.error("❌ Install mlxtend: `pip install mlxtend`")
+        st.error("❌ Required math library is missing. Run `pip install mlxtend` in your terminal.")
         st.stop()
     
     df = st.session_state['data']
     
-    if 'transaction_id' not in df.columns:
-        st.warning("⚠️ Transaction ID required for basket analysis.")
-        st.info("Re-upload data and map the Transaction ID column.")
-        st.stop()
+    # --- SMART COLUMN DETECTION ---
+    # Ensures the app doesn't crash if the column is named differently
+    possible_id_cols = ['transaction_id', 'order_id', 'invoice_no', 'InvoiceNo', 'OrderID']
+    order_col = next((col for col in possible_id_cols if col in df.columns), None)
     
+    if not order_col:
+        st.error("⚠️ Could not find a Transaction ID or Order ID column in your data. Please ensure your dataset has a column tracking individual orders.")
+        st.stop()
+        
     st.markdown("---")
     
-    # Parameters
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        min_support = st.slider("Min Support", 0.005, 0.1, 0.02, 0.005)
-    with col2:
-        min_lift = st.slider("Min Lift", 1.0, 5.0, 1.2, 0.1)
-    with col3:
-        max_rules = st.slider("Max Rules", 10, 100, 30, 10)
-    
-    if st.button("🔍 Run Analysis", type="primary", use_container_width=True):
-        with st.spinner("Mining patterns..."):
-            rules = run_analysis(df, min_support, min_lift)
-        
-        if rules is not None and len(rules) > 0:
-            st.session_state['basket_rules'] = rules
-            st.success(f"✅ Found {len(rules)} rules!")
-            st.rerun()
-        else:
-            st.warning("No patterns found. Try lower thresholds.")
-    
-    if st.session_state.get('basket_rules') is not None:
-        rules = st.session_state['basket_rules']
-        
-        st.markdown("---")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("📊 Rules", len(rules))
-        col2.metric("📈 Avg Confidence", f"{rules['confidence'].mean():.0%}")
-        col3.metric("🎯 Avg Lift", f"{rules['lift'].mean():.1f}x")
-        col4.metric("🔝 Max Lift", f"{rules['lift'].max():.1f}x")
-        
-        st.markdown("---")
-        
-        tab1, tab2, tab3 = st.tabs(["📋 Rules", "🕸️ Network", "💡 Insights"])
-        
-        with tab1:
-            display = rules.head(max_rules).copy()
-            display['antecedents'] = display['antecedents'].apply(lambda x: ', '.join(list(x)[:2]))
-            display['consequents'] = display['consequents'].apply(lambda x: ', '.join(list(x)[:2]))
-            display = display[['antecedents', 'consequents', 'support', 'confidence', 'lift']]
-            display.columns = ['If Buys', 'Also Buys', 'Support', 'Confidence', 'Lift']
-            display['Confidence'] = display['Confidence'].apply(lambda x: f"{x:.0%}")
-            display['Lift'] = display['Lift'].apply(lambda x: f"{x:.2f}x")
-            st.dataframe(display, use_container_width=True, hide_index=True)
-        
-        with tab2:
-            if NETWORKX_AVAILABLE:
-                render_network(rules.head(15))
+    # --- ALGORITHM TUNING (HIDDEN FOR CLIENTS, ACCESSIBLE FOR PROFESSORS) ---
+    with st.expander("⚙️ Advanced Technical Settings (Algorithm Tuning)"):
+        st.markdown("<p style='font-size: 0.85rem;'>Adjust the hyperparameters for the Apriori pattern mining algorithm.</p>", unsafe_allow_html=True)
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            min_support = st.slider("Min Support (Frequency)", 0.005, 0.1, 0.02, 0.005, help="Minimum % of total transactions that must contain the itemset.")
+        with col2:
+            min_lift = st.slider("Min Lift (Correlation)", 1.0, 5.0, 1.2, 0.1, help="Values > 1 indicate the items are bought together more often than random chance.")
+        with col3:
+            max_rules = st.slider("Max Rules to Display", 5, 50, 15, 5)
+            
+        if st.button("🔄 Rerun Apriori Algorithm", type="primary", use_container_width=True):
+            with st.spinner("Mining transaction patterns..."):
+                rules = run_analysis(df, order_col, min_support, min_lift)
+            
+            if rules is not None and not rules.empty:
+                st.session_state['basket_rules'] = rules
+                st.success(f"✅ Optimization complete. Generated {len(rules)} association rules.")
             else:
-                st.info("Install networkx for visualization")
+                st.session_state['basket_rules'] = None
+                st.warning("No patterns found with these strict thresholds. Try lowering the Min Support or Min Lift.")
+
+    # --- AUTO-RUN IF NO RULES EXIST ---
+    if st.session_state.get('basket_rules') is None:
+        with st.spinner("Analyzing purchase behaviors..."):
+            st.session_state['basket_rules'] = run_analysis(df, order_col, 0.02, 1.2)
+
+    # --- RESULTS DISPLAY ---
+    rules = st.session_state.get('basket_rules')
+    
+    if rules is not None and not rules.empty:
+        # High-level metrics
+        col1, col2, col3 = st.columns(3)
+        col1.metric("🛒 Valid Pairings Found", len(rules))
+        col2.metric("🎯 Strongest Multiplier", f"{rules['lift'].max():.1f}x", help="The highest lift score found.")
+        col3.metric("📈 Highest Match Rate", f"{rules['confidence'].max():.0%}", help="The highest confidence probability.")
         
-        with tab3:
-            for i, row in rules.head(3).iterrows():
-                ant = ', '.join(list(row['antecedents']))[:40]
-                cons = ', '.join(list(row['consequents']))[:40]
-                st.info(f"🛒 **{ant}** → **{cons}** (Lift: {row['lift']:.1f}x, Confidence: {row['confidence']:.0%})")
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # --- THE TWO-FACED TABS ---
+        tab_biz, tab_viz, tab_tech = st.tabs(["💡 Marketing Strategies", "🕸️ Interactive Network", "🔬 Raw Math (Apriori Data)"])
+        
+        with tab_biz:
+            st.markdown("### Top Cross-Selling Opportunities")
+            st.markdown("Based on historical data, here is exactly what you should recommend to your customers to increase Average Order Value.")
+            
+            # Display the top 5 most actionable rules
+            for i, row in rules.head(5).iterrows():
+                ant = ', '.join(list(row['antecedents']))
+                cons = ', '.join(list(row['consequents']))
+                lift_val = row['lift']
+                conf_val = row['confidence']
+                
+                st.markdown(f"""
+                <div class="strategy-card">
+                    <div class="strategy-title">Strategy #{i+1}: The "{ant}" Upsell</div>
+                    <div class="strategy-text">
+                        When a customer adds <b>{ant}</b> to their cart, immediately recommend <b>{cons}</b>.<br>
+                        <i>Why? Customers are <b>{lift_val:.1f} times more likely</b> to buy {cons} when buying {ant}, with a match probability of {conf_val:.0%}.</i>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+        with tab_viz:
+            st.markdown("### Product Association Map")
+            st.caption("A visual representation of how your products are connected. Thicker clusters indicate strong buying relationships.")
+            if NETWORKX_AVAILABLE:
+                render_network(rules.head(max_rules))
+            else:
+                st.info("Please install networkx (`pip install networkx`) for visualization.")
+                
+        with tab_tech:
+            st.markdown("### Association Rules Dataframe")
+            st.caption("The raw output of the machine learning model. Useful for detailed statistical analysis.")
+            
+            display = rules.head(max_rules).copy()
+            display['antecedents'] = display['antecedents'].apply(lambda x: ', '.join(list(x)))
+            display['consequents'] = display['consequents'].apply(lambda x: ', '.join(list(x)))
+            display = display[['antecedents', 'consequents', 'support', 'confidence', 'lift']]
+            
+            # Rename for slight clarity but keep technical terms
+            display.columns = ['Antecedent (If)', 'Consequent (Then)', 'Support', 'Confidence', 'Lift']
+            
+            # Format numbers beautifully
+            display['Support'] = display['Support'].apply(lambda x: f"{x:.3f}")
+            display['Confidence'] = display['Confidence'].apply(lambda x: f"{x:.1%}")
+            display['Lift'] = display['Lift'].apply(lambda x: f"{x:.2f}")
+            
+            st.dataframe(display, use_container_width=True, hide_index=True)
+            
+    elif rules is None:
+         st.info("Click 'Rerun Apriori Algorithm' above to start mining patterns.")
 
 
 @st.cache_data(show_spinner=False)
-def run_analysis(_df, min_support, min_lift):
+def run_analysis(df, order_col, min_support, min_lift):
     try:
-        df = _df.copy()
-        basket = df.groupby(['transaction_id', 'product_name'])['quantity'].sum().unstack().fillna(0)
-        basket_binary = basket.applymap(lambda x: 1 if x > 0 else 0)
+        # Group by order and product
+        basket = df.groupby([order_col, 'product_name'])['quantity'].sum().unstack().fillna(0)
         
-        min_trans = max(1, int(len(basket_binary) * 0.01))
-        valid = basket_binary.sum()[basket_binary.sum() >= min_trans].index
-        basket_binary = basket_binary[valid]
+        # FYP Optimization: Vectorized binary conversion (Much faster than applymap)
+        basket_binary = (basket > 0).astype(int)
+        
+        # Filter out extreme outliers to prevent memory crashes
+        min_trans = max(1, int(len(basket_binary) * 0.005))
+        valid_products = basket_binary.sum()[basket_binary.sum() >= min_trans].index
+        basket_binary = basket_binary[valid_products]
         
         if len(basket_binary.columns) < 2:
-            return None
+            return pd.DataFrame()
         
+        # Run Apriori
         frequent = apriori(basket_binary, min_support=min_support, use_colnames=True, max_len=3)
         if len(frequent) == 0:
-            return None
+            return pd.DataFrame()
         
+        # Generate Rules
         rules = association_rules(frequent, metric="lift", min_threshold=min_lift)
-        return rules.sort_values('lift', ascending=False)
-    except:
-        return None
+        return rules.sort_values('lift', ascending=False).reset_index(drop=True)
+        
+    except Exception as e:
+        st.error(f"Algorithm Error: {e}")
+        return pd.DataFrame()
 
 
 def render_network(rules):
     G = nx.Graph()
+    
+    # Dictionary to hold the full names for the hover tooltips
+    hover_data = {}
+    
     for _, row in rules.iterrows():
-        for ant in row['antecedents']:
-            for cons in row['consequents']:
-                G.add_edge(str(ant)[:15], str(cons)[:15])
+        ant_full = list(row['antecedents'])[0]
+        cons_full = list(row['consequents'])[0]
+        
+        # Create a smart short name (first 2-3 words) instead of a blind cutoff
+        ant_short = ' '.join(ant_full.split()[:3])
+        cons_short = ' '.join(cons_full.split()[:3])
+        
+        G.add_edge(ant_short, cons_short, weight=row['lift'])
+        
+        # Store the full name for the interactive hover effect
+        hover_data[ant_short] = ant_full
+        hover_data[cons_short] = cons_full
     
     if len(G.nodes()) == 0:
         return
     
-    pos = nx.spring_layout(G, k=2, seed=42)
+    # Optimize layout: k brings nodes closer together so it doesn't look so empty
+    pos = nx.spring_layout(G, k=0.8, iterations=50, seed=42)
     
     edge_x, edge_y = [], []
     for e in G.edges():
@@ -181,12 +243,36 @@ def render_network(rules):
     node_x = [pos[n][0] for n in G.nodes()]
     node_y = [pos[n][1] for n in G.nodes()]
     
+    # Create dynamic node sizes and rich hover text
+    node_sizes = []
+    hover_texts = []
+    for node in G.nodes():
+        connections = G.degree(node)
+        # FYP Mic Drop: Scale node size by how many connections it has!
+        node_sizes.append(18 + (connections * 6)) 
+        hover_texts.append(f"<b>{hover_data[node]}</b><br>Tied to {connections} other bundle items")
+    
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=edge_x, y=edge_y, mode='lines', line=dict(width=1, color='#6366f1'), hoverinfo='none'))
-    fig.add_trace(go.Scatter(x=node_x, y=node_y, mode='markers+text', text=list(G.nodes()), textposition='top center', textfont=dict(size=10, color='#a0a0a0'), marker=dict(size=20, color='#8b5cf6', line=dict(width=2, color='white'))))
-    fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', showlegend=False, height=450, xaxis=dict(showgrid=False, zeroline=False, showticklabels=False), yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
+    
+    # Draw edges (Brighter purple, slightly thicker)
+    fig.add_trace(go.Scatter(x=edge_x, y=edge_y, mode='lines', 
+                             line=dict(width=1.5, color='rgba(139, 92, 246, 0.7)'), 
+                             hoverinfo='none'))
+                             
+    # Draw nodes (Neon cyan to pop off the dark background, white text)
+    fig.add_trace(go.Scatter(x=node_x, y=node_y, mode='markers+text', 
+                             text=list(G.nodes()), textposition='top center', 
+                             textfont=dict(size=13, color='#ffffff', family="Inter"), 
+                             marker=dict(size=node_sizes, color='#06b6d4', line=dict(width=2, color='#ffffff')),
+                             hoverinfo='text',
+                             hovertext=hover_texts))
+                             
+    fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
+                      showlegend=False, height=600, margin=dict(t=30, b=30, l=30, r=30),
+                      xaxis=dict(showgrid=False, zeroline=False, showticklabels=False), 
+                      yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
+                      
     st.plotly_chart(fig, use_container_width=True)
-
 
 if __name__ == "__main__":
     main()
