@@ -169,14 +169,16 @@ def create_sidebar():
             st.switch_page("pages/Dashboard.py")
         if st.button("📦 Products", use_container_width=True, key="nav_prod"):
             st.switch_page("pages/Products.py")
+            
+        # 👇 NEW BUTTON ADDED HERE 👇
+        if st.button("📋 Product Analysis", use_container_width=True, key="nav_abc"):
+            st.switch_page("pages/Product_Analysis.py")
+            
         if st.button("🛒 Basket Analysis", use_container_width=True, key="nav_basket"):
             st.switch_page("pages/Basket_Analysis.py")
         if st.button("🤖 AI Forecast", use_container_width=True, key="nav_ai"):
             st.switch_page("pages/AI_Forecasting.py")
-            
-        # 👇 ADD THIS NEW BUTTON RIGHT HERE 👇
         if st.button("💬 AI Assistant", use_container_width=True, key="nav_chat"):
             st.switch_page("pages/AI_Assistant.py")
-            
         if st.button("📄 Reports", use_container_width=True, key="nav_reports"):
             st.switch_page("pages/Reports.py")
