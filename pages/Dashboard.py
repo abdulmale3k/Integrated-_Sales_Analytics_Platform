@@ -112,6 +112,12 @@ def calculate_metrics(df):
         'unique_customers': df['customer_id'].nunique() if 'customer_id' in df.columns else None
     }
 
+# --- HELPER FUNCTION FOR EXPORT ---
+@st.cache_data
+def convert_df(df):
+    """Converts the dataframe to CSV format safely without index."""
+    return df.to_csv(index=False).encode('utf-8')
+
 
 def main():
     # === SIDEBAR ===
@@ -233,7 +239,12 @@ def main():
         fig.update_layout(**CHART_THEME, height=400, showlegend=False, coloraxis_showscale=False)
         st.plotly_chart(fig, use_container_width=True)
     
-    # === DATA QUALITY ===
+    st.markdown("---")
+    
+    # === DATA QUALITY & EXPORT ROW ===
+    st.markdown("### 📥 Data Management")
+    
+    # We use columns to put the Quality Summary and the Export option side by side (or stacked)
     with st.expander("🔍 Data Quality Summary"):
         col1, col2 = st.columns(2)
         
@@ -245,6 +256,20 @@ def main():
         with col2:
             st.markdown("**Statistics**")
             st.dataframe(df.describe().round(2), use_container_width=True)
+            
+    with st.expander("💾 Export Cleaned Dataset"):
+        st.write("Download your formatted, cleaned dataset. This file is ready to be loaded into Excel or any other Business Intelligence tool.")
+        
+        # Call the cached conversion function
+        csv_data = convert_df(df)
+        
+        st.download_button(
+            label="📥 Download CSV",
+            data=csv_data,
+            file_name="SME_Cleaned_Transactions.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
 
 
 if __name__ == "__main__":
